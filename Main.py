@@ -190,7 +190,7 @@ class Zonal:
         # print(contain_param)
         return contain_param
 
-    def count_by_grid(self, typ):
+    def count_by_grid(self, typ, out_loc=None):
         result = {}
         count = 0
         for grid_polygon in self.shp["geometry"]:
@@ -255,11 +255,13 @@ class Zonal:
         # result["BID"] = bid
         self.shp[typ] = result.values()
         # print(result)
+        if out_loc:
+            self.shp.to_file(out_loc)
         return self.shp
 
 
 # extract_by_value("Raster/2000t.tif", "test.tif", ">=10", "<=50")
 # g = make_grid("ShapeFile/T.shp", 1000, "Rasterouttest/grid.shp")
 zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
-re = zn.count_by_grid("area")
+re = zn.count_by_grid("area", "grid_with_area.shp")
 print(re)

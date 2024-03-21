@@ -123,6 +123,22 @@ def make_grid(loc_in, step, loc_out):
     return grid
 
 
+def guss(threshold, dist):
+    q1 = math.exp(-(1/2.0)*(dist/threshold)*(dist/threshold))
+    q2 = math.exp(-(1/2.0))
+    return (q1 - q2)/(1 - q2)
+
+
+def guss_reach(threshold, pop_grid, area_grid):
+    """
+    :param threshold: the threshold of guss search
+    :param pop_grid: grid of popularity
+    :param area_grid: grid of area of research region
+    :return: a dic that contain a guss search value of specific gird in pop_grid
+    warning : the input grid should be in the same crs and have same area of gird
+    """
+
+
 class Zonal:
     def __init__(self, in_raster, in_shapefile):
         # read information of raster inputted
@@ -135,6 +151,7 @@ class Zonal:
                                   self.start_of_y + self.size[1] * self.cell_size_y)
         self.array = self.ras.GetRasterBand(1).ReadAsArray()
         # print(array)
+        self.ras = None
 
         # read information of shapefile inputted
         self.shp = gpd.read_file(in_shapefile)
@@ -225,22 +242,23 @@ class Zonal:
                     for m in range(self.covered_y_start, self.covered_y_end):
                         flag = 0
                         if self.array[m][n] > 0:
-                            flag = self.array[m][n]
+                            flag = self.array[m][n]/abs(self.cell_size_y*self.cell_size_x)
                         sums += self.grid_contain(m, n) * flag
 
                 result[count] = sums
             # mind THIS F**king terrible tab plz !!
             count += 1
 
-        bid = list(result.keys())
-        result = pd.DataFrame(result.values(), columns=[typ])
-        result["BID"] = bid
+        # bid = list(result.keys())
+        # result = pd.DataFrame(result.values(), columns=[typ])
+        # result["BID"] = bid
+        self.shp[typ] = result.values()
         # print(result)
-        return result
+        return self.shp
 
 
 # extract_by_value("Raster/2000t.tif", "test.tif", ">=10", "<=50")
-g = make_grid("ShapeFile/T.shp", 1000, "Rasterouttest/grid.shp")
+# g = make_grid("ShapeFile/T.shp", 1000, "Rasterouttest/grid.shp")
 zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
-re = zn.count_by_grid("sum")
+re = zn.count_by_grid("area")
 print(re)

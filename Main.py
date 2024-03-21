@@ -155,6 +155,7 @@ class Zonal:
 
         # read information of shapefile inputted
         self.shp = gpd.read_file(in_shapefile)
+        self.crs = self.shp.crs
 
         # left then right, up then down
         # the value here will be changed in each time when count_by_grid are running

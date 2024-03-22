@@ -9,23 +9,6 @@ from shapely import geometry
 import pickle
 
 
-def get_conditions(inp, con):
-    """
-
-    :param inp: a number or something else
-    :param con: a condition in form of ">n" etc.
-    :return: True or False
-    """
-    if con[0] == ">" and con[1] != "=":
-        return inp > float(con[1:])
-    elif con[0] == "<" and con[1] != "=":
-        return inp < float(con[1:])
-    elif con[0] == ">" and con[1] == "=":
-        return inp >= float(con[2:])
-    elif con[0] == "<" and con[1] == "=":
-        return inp <= float(con[2:])
-
-
 def extract_by_value(file, save, *value):
     """
 
@@ -37,8 +20,25 @@ def extract_by_value(file, save, *value):
         ## but the string input should be no more than a couple of ">" and "<" ##
     :return: None
     """
+
+    def get_conditions(inp, condition):
+        """
+
+        :param inp: a number or something else
+        :param condition: a condition in form of ">n" etc.
+        :return: True or False
+        """
+        if condition[0] == ">" and condition[1] != "=":
+            return inp > float(condition[1:])
+        elif condition[0] == "<" and condition[1] != "=":
+            return inp < float(condition[1:])
+        elif condition[0] == ">" and condition[1] == "=":
+            return inp >= float(condition[2:])
+        elif condition[0] == "<" and condition[1] == "=":
+            return inp <= float(condition[2:])
+
     in_r = gdal.Open(file)
-    driver = in_r.GetDriver()
+    driver = gdal.GetDriverByName("GTiff")
     x, y = (in_r.RasterXSize, in_r.RasterYSize)
     proj = in_r.GetProjection()
     tran = in_r.GetGeoTransform()
@@ -73,7 +73,6 @@ def extract_by_value(file, save, *value):
         bands=1,
         eType=typ,
     )
-
     dts.SetGeoTransform(tran)
     dts.SetProjection(proj)
     dts.GetRasterBand(1).WriteArray(new_data)
@@ -132,15 +131,9 @@ def make_grid(loc_in, step, loc_out=None):
     return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
 
 
-def guss(threshold, dist):
-    q1 = math.exp(-(1/2.0)*(dist/threshold)*(dist/threshold))
-    q2 = math.exp(-(1/2.0))
-    return (q1 - q2)/(1 - q2)
-
-
-def guss_reach(threshold, pop_grid, area_grid):
+def guss_reach(thre, pop_grid, area_grid):
     """
-    :param threshold: the threshold of guss search
+    :param thre: the threshold of guss search
     :param pop_grid: grid of popularity
     :param area_grid: grid of area of research region
     :return: a dic that contain a guss search value of specific gird in pop_grid
@@ -160,17 +153,24 @@ def guss_reach(threshold, pop_grid, area_grid):
     def getCenter(shp):
         p_x, p_y = shp.exterior.coords.xy
         return (p_x[1] + p_x[0])/2.0, (p_y[1] + p_y[2])/2.0
+
+    def guss(threshold, dist):
+        q1 = math.exp(-(1 / 2.0) * (dist / threshold) * (dist / threshold))
+        q2 = math.exp(-(1 / 2.0))
+        return (q1 - q2) / (1 - q2)
+
     crs = pop_grid.grid_shp.crs
     # step 1, green to people
+    # print(area_grid.grid_shp)
     for i in range(area_grid.grid_shp.size):
-        print(area_grid.grid_shp)
-        grid = area_grid.grid_shp[i]
+        grid = area_grid.grid_shp.loc[i]
+        # print(grid)
         center = getCenter(grid["geometry"])
         center_point = shapely.Point(center)
-        buffer = center_point.buffer(threshold)
-        inter = area_grid.grid_shp.intersection(buffer)
-        inter = inter[~inter.is_empty]
-        print(inter)
+        buffer = center_point.buffer(thre)
+        inter = area_grid.grid_shp.intersects(buffer)
+        inter = area_grid.grid_shp[inter]
+        # print(inter)
         for inter_area in inter:
             x_dis = getCenter(inter_area)[0] - center[0]
             y_dis = getCenter(inter_area)[1] - center[1]
@@ -180,7 +180,7 @@ def guss_reach(threshold, pop_grid, area_grid):
     for grid in pop_grid.grid_shp:
         center = getCenter(grid)
         center_point = shapely.Point(center)
-        buffer = center_point.buffer(threshold)
+        buffer = center_point.buffer(thre)
         inter = area_grid.grid_shp.intersection(buffer)
         inter = inter[~inter.is_empty]
         for inter_area in inter:
@@ -343,7 +343,7 @@ class Zonal:
         # print(result)
         if out_loc:
             self.shp.to_file(out_loc)
-        return self.shp
+        return Grid(self.shp)
 
 
 class Error(Exception):
@@ -351,9 +351,15 @@ class Error(Exception):
         self.info = message
 
 
-extract_by_value("Raster/2000t.tif", "test.tif", 21, 22, 23, 24)
-g = make_grid("ShapeFile/T.shp", 1000)
-guss_reach(50, g, g)
-# zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
+# extract_by_value("Raster/using/2000t.tif", "test.tif", 21, 22, 23, 24)
+g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
+zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
+area_grid = zonal_er.count_by_grid("area")
+zonal_er = Zonal("Raster/a2000/hdr.adf", "Raster_out/grid.shp")
+pop_grid = zonal_er.count_by_grid("sum")
+pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
+pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
+guss_reach(50, pop_grid, area_grid)
+# zn = Zonal("Raster/2000t.tif", "Raster_out/grid.shp")
 # re = zn.count_by_grid("area", "grid_with_area.shp")
 # print(re)

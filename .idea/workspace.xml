@@ -4,7 +4,30 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="b99dfbfb-59d0-432d-942e-a9635390f224" name="Changes" comment="add new function and modify some function" />
+    <list default="true" id="b99dfbfb-59d0-432d-942e-a9635390f224" name="Changes" comment="add new function and modify some function">
+      <change beforePath="$PROJECT_DIR$/.idea/.name" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/Program.iml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Main.py" beforeDir="false" afterPath="$PROJECT_DIR$/Main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tfw" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif.aux.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif.ovr" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif.vat.cpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif.vat.dbf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Raster/2000t.tif.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Rasterouttest/grid.cpg" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Rasterouttest/grid.dbf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Rasterouttest/grid.prj" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Rasterouttest/grid.shp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/Rasterouttest/grid.shx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/test.tif" beforeDir="false" afterPath="$PROJECT_DIR$/test.tif" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -116,7 +139,7 @@
       <workItem from="1710847298792" duration="947000" />
       <workItem from="1710850069526" duration="5236000" />
       <workItem from="1711020357570" duration="3250000" />
-      <workItem from="1711072696157" duration="8867000" />
+      <workItem from="1711072696157" duration="10184000" />
     </task>
     <task id="LOCAL-00001" summary="add new function and modify some function">
       <created>1711029089891</created>
@@ -181,7 +204,21 @@
       <option name="project" value="LOCAL" />
       <updated>1711112028442</updated>
     </task>
-    <option name="localTasksCounter" value="10" />
+    <task id="LOCAL-00010" summary="add new function and modify some function">
+      <created>1711112130394</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1711112130394</updated>
+    </task>
+    <task id="LOCAL-00011" summary="add new function and modify some function">
+      <created>1711112222233</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1711112222233</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TerminalProjectNonSharedOptionsProvider">
@@ -208,7 +245,7 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/Program$Main.coverage" NAME="Main Coverage Results" MODIFIED="1710856376125" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Program$raster_pro.coverage" NAME="raster_pro Coverage Results" MODIFIED="1710652395224" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/Main_py$Main.coverage" NAME="Main Coverage Results" MODIFIED="1711111961785" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/Main_py$Main.coverage" NAME="Main Coverage Results" MODIFIED="1711112874714" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/Program$Grid_general.coverage" NAME="Main Coverage Results" MODIFIED="1710664787580" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

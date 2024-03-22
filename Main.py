@@ -115,16 +115,18 @@ def make_grid(loc_in, step, loc_out=None):
     """
     here was a part to be optimize
     """
-    ind = np.stack([grid.intersects(shp.geometry[0]).values,
-                    grid.intersects(shp.geometry[1]).values,
-                    grid.intersects(shp.geometry[2]).values]).any(0)
+    ind = grid.intersects(shp.geometry[0]).values
+    for bound_shp in shp.geometry[1:]:
+        ind = np.vstack([ind, grid.intersects(bound_shp).values])
+
+    ind = ind.any(0)
     # 裁剪网格
     grid = grid.loc[ind]
     grid = grid.reset_index().drop("index", 1)
-    # fig, ax = plt.subplots(1, 2)
-    # ax[0] = shp.plot(ax=ax[0])
-    # ax[1] = grid.plot(ax=ax[1])
-    # plt.show()
+    fig, ax = plt.subplots(1, 2)
+    ax[0] = shp.plot(ax=ax[0])
+    ax[1] = grid.plot(ax=ax[1])
+    plt.show()
     if loc_out:
         grid.to_file(loc_out)
     return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])

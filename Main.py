@@ -351,7 +351,7 @@ class Error(Exception):
         self.info = message
 
 
-# extract_by_value("Raster/2000t.tif", "test.tif", ">=10", "<=50")
+extract_by_value("Raster/2000t.tif", "test.tif", 21, 22, 23, 24)
 g = make_grid("ShapeFile/T.shp", 1000)
 guss_reach(50, g, g)
 # zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")

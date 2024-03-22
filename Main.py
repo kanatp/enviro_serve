@@ -79,7 +79,7 @@ def extract_by_value(file, save, *value):
     dts.GetRasterBand(1).SetNoDataValue(0)
 
 
-def make_grid(loc_in, step, loc_out):
+def make_grid(loc_in, step, loc_out=None):
     # 统一坐标系
     crs_file = open("crs.txt", "rb")
     crs = pickle.load(crs_file)
@@ -110,17 +110,22 @@ def make_grid(loc_in, step, loc_out):
 
     # 显示
     grid = gpd.GeoDataFrame(geometry=geom_array, crs=crs)
+    # the intersection of grid that intersect with the geometry
+    """
+    here was a part to be optimize
+    """
     ind = np.stack([grid.intersects(shp.geometry[0]).values,
                     grid.intersects(shp.geometry[1]).values,
                     grid.intersects(shp.geometry[2]).values]).any(0)
     # 裁剪网格
     grid = grid.loc[ind]
-    fig, ax = plt.subplots(1, 2)
-    ax[0] = shp.plot(ax=ax[0])
-    ax[1] = grid.plot(ax=ax[1])
-    plt.show()
-    grid.to_file(loc_out)
-    return grid
+    # fig, ax = plt.subplots(1, 2)
+    # ax[0] = shp.plot(ax=ax[0])
+    # ax[1] = grid.plot(ax=ax[1])
+    # plt.show()
+    if loc_out:
+        grid.to_file(loc_out)
+    return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
 
 
 def guss(threshold, dist):
@@ -137,6 +142,41 @@ def guss_reach(threshold, pop_grid, area_grid):
     :return: a dic that contain a guss search value of specific gird in pop_grid
     warning : the input grid should be in the same crs and have same area of gird
     """
+
+
+class Grid:
+
+    """
+    to conveniently use grid shp
+    the size was a tuple arrange in form like (size_x, size_y)
+    the bound was a list of points the grid's largest circumscribed rectangle has
+    """
+
+    def __init__(self, grid_shp, size=None, bound=None):
+        self.grid_shp = grid_shp
+        if size:
+            self.size = size
+        else:
+            self.size = self.getSize()
+        if bound:
+            self.bound = bound
+        else:
+            bounds = self.grid_shp.bounds
+            bounds_min = bounds.min()
+            bounds_max = bounds.max()
+            self.bound = [float(bounds_min.minx), float(bounds_min.miny),
+                          float(bounds_max.maxx), float(bounds_max.maxy)]
+
+        self.min_x, self.min_y = self.bound[0], self.bound[1]
+        self.max_x, self.max_y = self.bound[2], self.bound[3]
+
+    def getSize(self):
+        example = self.grid_shp.loc[0]["geometry"]
+        p_x, p_y = example.exterior.coords.xy
+        size_x = p_x[1]-p_x[0]
+        # remain the size of y as a negative to make consistent with raster data
+        size_y = p_y[2]-p_y[1]
+        return size_x, size_y
 
 
 class Zonal:
@@ -261,7 +301,9 @@ class Zonal:
 
 
 # extract_by_value("Raster/2000t.tif", "test.tif", ">=10", "<=50")
-# g = make_grid("ShapeFile/T.shp", 1000, "Rasterouttest/grid.shp")
-zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
-re = zn.count_by_grid("area", "grid_with_area.shp")
-print(re)
+g = make_grid("ShapeFile/T.shp", 1000)
+print(g.size)
+print(g.bound)
+# zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
+# re = zn.count_by_grid("area", "grid_with_area.shp")
+# print(re)

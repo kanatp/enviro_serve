@@ -1,6 +1,7 @@
 import math
 import geopandas as gpd
 import pandas as pd
+import shapely
 from osgeo import gdal
 import numpy as np
 import matplotlib.pyplot as plt
@@ -119,6 +120,7 @@ def make_grid(loc_in, step, loc_out=None):
                     grid.intersects(shp.geometry[2]).values]).any(0)
     # 裁剪网格
     grid = grid.loc[ind]
+    grid = grid.reset_index().drop("index", 1)
     # fig, ax = plt.subplots(1, 2)
     # ax[0] = shp.plot(ax=ax[0])
     # ax[1] = grid.plot(ax=ax[1])
@@ -140,8 +142,50 @@ def guss_reach(threshold, pop_grid, area_grid):
     :param pop_grid: grid of popularity
     :param area_grid: grid of area of research region
     :return: a dic that contain a guss search value of specific gird in pop_grid
-    warning : the input grid should be in the same crs and have same area of gird
+    warning : the input grid should be in the same crs
     """
+    if pop_grid.grid_shp.crs != area_grid.grid_shp.crs:
+        raise Error("crs doesn't match")
+    try:
+        pop_grid.grid_shp["pop"]
+    except KeyError:
+        raise Error("don't have a pop column, rename or add it to the pop grid")
+    try:
+        area_grid.grid_shp["area"]
+    except KeyError:
+        raise Error("don't have a area column, rename or add it to the area grid")
+
+    def getCenter(shp):
+        p_x, p_y = shp.exterior.coords.xy
+        return (p_x[1] + p_x[0])/2.0, (p_y[1] + p_y[2])/2.0
+    crs = pop_grid.grid_shp.crs
+    # step 1, green to people
+    for i in range(area_grid.grid_shp.size):
+        print(area_grid.grid_shp)
+        grid = area_grid.grid_shp[i]
+        center = getCenter(grid["geometry"])
+        center_point = shapely.Point(center)
+        buffer = center_point.buffer(threshold)
+        inter = area_grid.grid_shp.intersection(buffer)
+        inter = inter[~inter.is_empty]
+        print(inter)
+        for inter_area in inter:
+            x_dis = getCenter(inter_area)[0] - center[0]
+            y_dis = getCenter(inter_area)[1] - center[1]
+            distance = math.sqrt(x_dis*x_dis + y_dis*y_dis)
+            divisor = guss(50, distance) * inter["area"]
+
+    for grid in pop_grid.grid_shp:
+        center = getCenter(grid)
+        center_point = shapely.Point(center)
+        buffer = center_point.buffer(threshold)
+        inter = area_grid.grid_shp.intersection(buffer)
+        inter = inter[~inter.is_empty]
+        for inter_area in inter:
+            x_dis = getCenter(inter_area)[0] - center[0]
+            y_dis = getCenter(inter_area)[1] - center[1]
+            distance = math.sqrt(x_dis*x_dis + y_dis*y_dis)
+            # guss_value_Ai = guss(50, distance) * Rj
 
 
 class Grid:
@@ -300,10 +344,14 @@ class Zonal:
         return self.shp
 
 
+class Error(Exception):
+    def __init__(self, message):
+        self.info = message
+
+
 # extract_by_value("Raster/2000t.tif", "test.tif", ">=10", "<=50")
 g = make_grid("ShapeFile/T.shp", 1000)
-print(g.size)
-print(g.bound)
+guss_reach(50, g, g)
 # zn = Zonal("Raster/2000t.tif", "Rasterouttest/grid.shp")
 # re = zn.count_by_grid("area", "grid_with_area.shp")
 # print(re)

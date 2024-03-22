@@ -123,10 +123,10 @@ def make_grid(loc_in, step, loc_out=None):
     # 裁剪网格
     grid = grid.loc[ind]
     grid = grid.reset_index().drop("index", 1)
-    fig, ax = plt.subplots(1, 2)
-    ax[0] = shp.plot(ax=ax[0])
-    ax[1] = grid.plot(ax=ax[1])
-    plt.show()
+    # fig, ax = plt.subplots(1, 2)
+    # ax[0] = shp.plot(ax=ax[0])
+    # ax[1] = grid.plot(ax=ax[1])
+    # plt.show()
     if loc_out:
         grid.to_file(loc_out)
     return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])

@@ -159,35 +159,23 @@ def guss_reach(thre, pop_grid, area_grid):
         q2 = math.exp(-(1 / 2.0))
         return (q1 - q2) / (1 - q2)
 
+    def close_selecter(g1, g2):
+        for i in range(g1.size):
+            grid = g1.loc[i]
+            center = getCenter(grid["geometry"])
+            center_point = shapely.Point(center)
+            buffer = center_point.buffer(thre)
+            inter = g2.intersects(buffer)
+            inter = g2[inter]
+            yield i, inter
+
+    def getDistance(inter_grids, center):
+        x_dis = getCenter(inter_grids)[0] - center[0]
+        y_dis = getCenter(inter_grids)[1] - center[1]
+        return math.sqrt(x_dis * x_dis + y_dis * y_dis)
+
     crs = pop_grid.grid_shp.crs
     # step 1, green to people
-    # print(area_grid.grid_shp)
-    for i in range(area_grid.grid_shp.size):
-        grid = area_grid.grid_shp.loc[i]
-        # print(grid)
-        center = getCenter(grid["geometry"])
-        center_point = shapely.Point(center)
-        buffer = center_point.buffer(thre)
-        inter = area_grid.grid_shp.intersects(buffer)
-        inter = area_grid.grid_shp[inter]
-        # print(inter)
-        for inter_area in inter:
-            x_dis = getCenter(inter_area)[0] - center[0]
-            y_dis = getCenter(inter_area)[1] - center[1]
-            distance = math.sqrt(x_dis*x_dis + y_dis*y_dis)
-            divisor = guss(50, distance) * inter["area"]
-
-    for grid in pop_grid.grid_shp:
-        center = getCenter(grid)
-        center_point = shapely.Point(center)
-        buffer = center_point.buffer(thre)
-        inter = area_grid.grid_shp.intersection(buffer)
-        inter = inter[~inter.is_empty]
-        for inter_area in inter:
-            x_dis = getCenter(inter_area)[0] - center[0]
-            y_dis = getCenter(inter_area)[1] - center[1]
-            distance = math.sqrt(x_dis*x_dis + y_dis*y_dis)
-            # guss_value_Ai = guss(50, distance) * Rj
 
 
 class Grid:

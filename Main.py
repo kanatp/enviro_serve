@@ -209,7 +209,25 @@ def guss_reach(thre, pop_grid, area_grid):
             ai += guss(thre, distance)*inter_rj
         pop_grid.grid_shp.loc[i, "Ai"] = ai
 
-    return pop_grid.grid_shp
+    return Grid(pop_grid.grid_shp)
+
+
+def demand(grid, ai_column_name, pop_column_name, out_loc):
+    shp = grid.grid_shp
+    for i in range(shp.shape[0]):
+        ai = shp[ai_column_name][i]
+        pop = shp[pop_column_name][i]
+        if pop == 0:
+            ro = -1
+        else:
+            ro = ai/pop
+        shp.loc[i, "RO"] = ro
+
+    grid.to_shapefile(out_loc)
+
+
+def supply():
+    ...
 
 
 class Grid:
@@ -245,6 +263,11 @@ class Grid:
         # remain the size of y as a negative to make consistent with raster data
         size_y = p_y[2]-p_y[1]
         return size_x, size_y
+
+    def to_shapefile(self, loc):
+        if loc[-3:] != "shp":
+            loc = loc + ".shp"
+        self.grid_shp.to_file(loc)
 
 
 class Zonal:
@@ -301,7 +324,7 @@ class Zonal:
         # print(contain_param)
         return contain_param
 
-    def count_by_grid(self, typ, out_loc=None):
+    def count_by_grid(self, typ, column=None, out_loc=None):
         result = {}
         count = 0
         for grid_polygon in self.shp["geometry"]:
@@ -364,7 +387,10 @@ class Zonal:
         # bid = list(result.keys())
         # result = pd.DataFrame(result.values(), columns=[typ])
         # result["BID"] = bid
-        self.shp[typ] = result.values()
+        if column:
+            self.shp[column] = result.values()
+        else:
+            self.shp[typ] = result.values()
         # print(result)
         if out_loc:
             self.shp.to_file(out_loc)
@@ -384,7 +410,6 @@ zonal_er = Zonal("Raster/a2000/hdr.adf", "Raster_out/grid.shp")
 pop_grid = zonal_er.count_by_grid("sum")
 pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
 pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
-guss_reach(5000, pop_grid, area_grid).to_file("test.shp")
-# zn = Zonal("Raster/2000t.tif", "Raster_out/grid.shp")
-# re = zn.count_by_grid("area", "grid_with_area.shp")
-# print(re)
+test = guss_reach(5000, pop_grid, area_grid)
+demand(test, "Ai", "pop", "test")
+# print(test)

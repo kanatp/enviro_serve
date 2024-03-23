@@ -155,12 +155,14 @@ def guss_reach(thre, pop_grid, area_grid):
         return (p_x[1] + p_x[0])/2.0, (p_y[1] + p_y[2])/2.0
 
     def guss(threshold, dist):
+        if dist > threshold:
+            return 0
         q1 = math.exp(-(1 / 2.0) * (dist / threshold) * (dist / threshold))
         q2 = math.exp(-(1 / 2.0))
         return (q1 - q2) / (1 - q2)
 
     def close_selecter(g1, g2):
-        for i in range(g1.size):
+        for i in range(0, (g1.shape[0])):
             grid = g1.loc[i]
             center = getCenter(grid["geometry"])
             center_point = shapely.Point(center)
@@ -175,7 +177,39 @@ def guss_reach(thre, pop_grid, area_grid):
         return math.sqrt(x_dis * x_dis + y_dis * y_dis)
 
     crs = pop_grid.grid_shp.crs
+    # area_grid.grid_shp
+    # pop_grid.grid_shp
+    area_grid.grid_shp.loc[0, "Rj"], pop_grid.grid_shp.loc[0, "Ai"] = 0, 0
+
     # step 1, green to people
+    for i, inter in close_selecter(area_grid.grid_shp, pop_grid.grid_shp):
+        # print(i, inter)
+        divisor = 0
+        for inter_grid, inter_pop in zip(inter["geometry"], inter["pop"]):
+            if inter_pop == 0:
+                continue
+            center = getCenter(area_grid.grid_shp.loc[i]["geometry"])
+            distance = getDistance(inter_grid, center)
+            divisor += guss(thre, distance)*inter_pop
+        if divisor == 0:
+            rj = 0
+        else:
+            rj = area_grid.grid_shp.loc[i]["area"]/divisor
+            # print(rj)
+        area_grid.grid_shp.loc[i, "Rj"] = rj
+
+    # step2 people to green
+    for i, inter in close_selecter(pop_grid.grid_shp, area_grid.grid_shp):
+        ai = 0
+        for inter_grid, inter_rj in zip(inter["geometry"], inter["Rj"]):
+            if inter_rj == 0:
+                continue
+            center = getCenter(pop_grid.grid_shp.loc[i]["geometry"])
+            distance = getDistance(inter_grid, center)
+            ai += guss(thre, distance)*inter_rj
+        pop_grid.grid_shp.loc[i, "Ai"] = ai
+
+    return pop_grid.grid_shp
 
 
 class Grid:
@@ -225,11 +259,14 @@ class Zonal:
                                   self.start_of_y + self.size[1] * self.cell_size_y)
         self.array = self.ras.GetRasterBand(1).ReadAsArray()
         # print(array)
-        self.ras = None
 
         # read information of shapefile inputted
         self.shp = gpd.read_file(in_shapefile)
         self.crs = self.shp.crs
+        if self.crs != self.ras.GetProjection():
+            raise Error("the crs doesn't match")
+
+        self.ras = None
 
         # left then right, up then down
         # the value here will be changed in each time when count_by_grid are running
@@ -339,7 +376,7 @@ class Error(Exception):
         self.info = message
 
 
-# extract_by_value("Raster/using/2000t.tif", "test.tif", 21, 22, 23, 24)
+# extract_by_value("Raster/using/2000t.tif", "test.tif", 41, 42, 43, 44, 45, 46)
 g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
 zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
 area_grid = zonal_er.count_by_grid("area")
@@ -347,7 +384,7 @@ zonal_er = Zonal("Raster/a2000/hdr.adf", "Raster_out/grid.shp")
 pop_grid = zonal_er.count_by_grid("sum")
 pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
 pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
-guss_reach(50, pop_grid, area_grid)
+guss_reach(5000, pop_grid, area_grid).to_file("test.shp")
 # zn = Zonal("Raster/2000t.tif", "Raster_out/grid.shp")
 # re = zn.count_by_grid("area", "grid_with_area.shp")
 # print(re)

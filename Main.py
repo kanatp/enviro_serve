@@ -9,6 +9,22 @@ from shapely import geometry
 import pickle
 
 
+def raster_maker(out_loc, x, y, typ, tran, proj, new_data, background_value=-1):
+    driver = driver = gdal.GetDriverByName("GTiff")
+
+    dts = driver.Create(
+        out_loc,
+        xsize=x,
+        ysize=y,
+        bands=1,
+        eType=typ,
+    )
+    dts.SetGeoTransform(tran)
+    dts.SetProjection(proj)
+    dts.GetRasterBand(1).WriteArray(new_data)
+    dts.GetRasterBand(1).SetNoDataValue(background_value)
+
+
 def extract_by_value(file, save, *value):
     """
 
@@ -38,7 +54,6 @@ def extract_by_value(file, save, *value):
             return inp <= float(condition[2:])
 
     in_r = gdal.Open(file)
-    driver = gdal.GetDriverByName("GTiff")
     x, y = (in_r.RasterXSize, in_r.RasterYSize)
     proj = in_r.GetProjection()
     tran = in_r.GetGeoTransform()
@@ -66,17 +81,7 @@ def extract_by_value(file, save, *value):
             if not (flag1 or flag2):
                 new_data[i, j] = 0
 
-    dts = driver.Create(
-        save,
-        xsize=x,
-        ysize=y,
-        bands=1,
-        eType=typ,
-    )
-    dts.SetGeoTransform(tran)
-    dts.SetProjection(proj)
-    dts.GetRasterBand(1).WriteArray(new_data)
-    dts.GetRasterBand(1).SetNoDataValue(0)
+    raster_maker(save, x, y, typ, tran, proj, new_data, 0)
 
 
 def make_grid(loc_in, step, loc_out=None):
@@ -131,9 +136,10 @@ def make_grid(loc_in, step, loc_out=None):
     return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
 
 
-def guss_reach(thre, pop_grid, area_grid):
+# need a threads optimize
+def guss_reach(threshold, pop_grid, area_grid):
     """
-    :param thre: the threshold of guss search
+    :param threshold: the threshold of guss search
     :param pop_grid: grid of popularity
     :param area_grid: grid of area of research region
     :return: a dic that contain a guss search value of specific gird in pop_grid
@@ -154,10 +160,10 @@ def guss_reach(thre, pop_grid, area_grid):
         p_x, p_y = shp.exterior.coords.xy
         return (p_x[1] + p_x[0])/2.0, (p_y[1] + p_y[2])/2.0
 
-    def guss(threshold, dist):
-        if dist > threshold:
+    def guss(_threshold, dist):
+        if dist > _threshold:
             return 0
-        q1 = math.exp(-(1 / 2.0) * (dist / threshold) * (dist / threshold))
+        q1 = math.exp(-(1 / 2.0) * (dist / _threshold) * (dist / _threshold))
         q2 = math.exp(-(1 / 2.0))
         return (q1 - q2) / (1 - q2)
 
@@ -166,7 +172,7 @@ def guss_reach(thre, pop_grid, area_grid):
             grid = g1.loc[i]
             center = getCenter(grid["geometry"])
             center_point = shapely.Point(center)
-            buffer = center_point.buffer(thre)
+            buffer = center_point.buffer(threshold)
             inter = g2.intersects(buffer)
             inter = g2[inter]
             yield i, inter
@@ -190,7 +196,7 @@ def guss_reach(thre, pop_grid, area_grid):
                 continue
             center = getCenter(area_grid.grid_shp.loc[i]["geometry"])
             distance = getDistance(inter_grid, center)
-            divisor += guss(thre, distance)*inter_pop
+            divisor += guss(threshold, distance)*inter_pop
         if divisor == 0:
             rj = 0
         else:
@@ -206,28 +212,66 @@ def guss_reach(thre, pop_grid, area_grid):
                 continue
             center = getCenter(pop_grid.grid_shp.loc[i]["geometry"])
             distance = getDistance(inter_grid, center)
-            ai += guss(thre, distance)*inter_rj
+            ai += guss(threshold, distance)*inter_rj
         pop_grid.grid_shp.loc[i, "Ai"] = ai
 
     return Grid(pop_grid.grid_shp)
 
 
+def normalize(data_line):
+    _max = data_line.max()
+    _min = data_line.min()
+    # print(_max, _min)
+    return (data_line - _min) / (_max-_min)
+
+
 def demand(grid, ai_column_name, pop_column_name, out_loc):
     shp = grid.grid_shp
     for i in range(shp.shape[0]):
-        ai = shp[ai_column_name][i]
-        pop = shp[pop_column_name][i]
+        try:
+            ai = shp[ai_column_name][i]
+            pop = shp[pop_column_name][i]
+        except KeyError:
+            raise Error("column name of Ai or pop can't be found")
         if pop == 0:
             ro = -1
         else:
             ro = ai/pop
         shp.loc[i, "RO"] = ro
+    # data normalize
+    shp.loc[shp["RO"] == -1, 'RO'] = shp["RO"].max()
+    shp.loc[:, "RO"] = normalize(shp["RO"])
+    grid.to_shapefile(out_loc)
+
+
+def supply(grid, building_column_name, green_column_name, out_loc):
+    shp = grid.grid_shp
+    for i in range(shp.shape[0]):
+        building_area = shp[i][building_column_name]
+        green_area = shp[i][green_column_name]
+        if building_area == 0:
+            rp = -1
+        else:
+            rp = green_area/building_area
+        shp.loc[i, "RP"] = rp
 
     grid.to_shapefile(out_loc)
 
 
-def supply():
-    ...
+def pop_raster_preprocess(pop_ras, out_loc):
+    _pop_ras = gdal.Open(pop_ras)
+    x, y = (_pop_ras.RasterXSize, _pop_ras.RasterYSize)
+    typ = _pop_ras.GetRasterBand(1).DataType
+    proj = _pop_ras.GetProjection()
+    tran = _pop_ras.GetGeoTransform()
+
+    new_data = _pop_ras.GetRasterBand(1).ReadAsArray().copy()
+    for i in range(y):
+        for j in range(x):
+            if new_data[i, j] <= 0:
+                new_data[i, j] = 0
+
+    raster_maker(out_loc, x, y, typ, tran, proj, new_data, 0)
 
 
 class Grid:
@@ -406,7 +450,8 @@ class Error(Exception):
 g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
 zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
 area_grid = zonal_er.count_by_grid("area")
-zonal_er = Zonal("Raster/a2000/hdr.adf", "Raster_out/grid.shp")
+pop_raster_preprocess("Raster/a2000/hdr.adf", "Raster_out/pop.tif")
+zonal_er = Zonal("Raster_out/pop.tif", "Raster_out/grid.shp")
 pop_grid = zonal_er.count_by_grid("sum")
 pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
 pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)

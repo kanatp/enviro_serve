@@ -2,6 +2,7 @@ import math
 import geopandas as gpd
 import pandas as pd
 import shapely
+import threading
 from osgeo import gdal
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,7 +11,7 @@ import pickle
 
 
 def raster_maker(out_loc, x, y, typ, tran, proj, new_data, background_value=-1):
-    driver = driver = gdal.GetDriverByName("GTiff")
+    driver = gdal.GetDriverByName("GTiff")
 
     dts = driver.Create(
         out_loc,
@@ -137,24 +138,26 @@ def make_grid(loc_in, step, loc_out=None):
 
 
 # need a threads optimize
-def guss_reach(threshold, pop_grid, area_grid):
+def guss_reach(threshold, _pop_grid, _area_grid):
     """
     :param threshold: the threshold of guss search
-    :param pop_grid: grid of popularity
-    :param area_grid: grid of area of research region
+    :param _pop_grid: grid of popularity
+    :param _area_grid: grid of area of research region
     :return: a dic that contain a guss search value of specific gird in pop_grid
     warning : the input grid should be in the same crs
     """
-    if pop_grid.grid_shp.crs != area_grid.grid_shp.crs:
+    if _pop_grid.grid_shp.crs != _area_grid.grid_shp.crs:
         raise Error("crs doesn't match")
     try:
-        pop_grid.grid_shp["pop"]
+        _pop_grid.grid_shp["pop"]
     except KeyError:
         raise Error("don't have a pop column, rename or add it to the pop grid")
     try:
-        area_grid.grid_shp["area"]
+        _area_grid.grid_shp["area"]
     except KeyError:
         raise Error("don't have a area column, rename or add it to the area grid")
+    available = threading.active_count()
+    print(available)
 
     def getCenter(shp):
         p_x, p_y = shp.exterior.coords.xy
@@ -167,55 +170,55 @@ def guss_reach(threshold, pop_grid, area_grid):
         q2 = math.exp(-(1 / 2.0))
         return (q1 - q2) / (1 - q2)
 
-    def close_selecter(g1, g2):
-        for i in range(0, (g1.shape[0])):
-            grid = g1.loc[i]
-            center = getCenter(grid["geometry"])
-            center_point = shapely.Point(center)
+    def close_selector(first, second):
+        for _i in range(0, (first.shape[0])):
+            grid = first.loc[_i]
+            __center = getCenter(grid["geometry"])
+            center_point = shapely.Point(__center)
             buffer = center_point.buffer(threshold)
-            inter = g2.intersects(buffer)
-            inter = g2[inter]
-            yield i, inter
+            _inter = second.intersects(buffer)
+            _inter = second[_inter]
+            yield _i, _inter
 
-    def getDistance(inter_grids, center):
-        x_dis = getCenter(inter_grids)[0] - center[0]
-        y_dis = getCenter(inter_grids)[1] - center[1]
+    def getDistance(inter_grids, _center):
+        x_dis = getCenter(inter_grids)[0] - _center[0]
+        y_dis = getCenter(inter_grids)[1] - _center[1]
         return math.sqrt(x_dis * x_dis + y_dis * y_dis)
 
-    crs = pop_grid.grid_shp.crs
+    # crs = pop_grid.grid_shp.crs
     # area_grid.grid_shp
     # pop_grid.grid_shp
-    area_grid.grid_shp.loc[0, "Rj"], pop_grid.grid_shp.loc[0, "Ai"] = 0, 0
+    _area_grid.grid_shp.loc[0, "Rj"], _pop_grid.grid_shp.loc[0, "Ai"] = 0, 0
 
     # step 1, green to people
-    for i, inter in close_selecter(area_grid.grid_shp, pop_grid.grid_shp):
+    for i, inter in close_selector(_area_grid.grid_shp, _pop_grid.grid_shp):
         # print(i, inter)
         divisor = 0
         for inter_grid, inter_pop in zip(inter["geometry"], inter["pop"]):
             if inter_pop == 0:
                 continue
-            center = getCenter(area_grid.grid_shp.loc[i]["geometry"])
+            center = getCenter(_area_grid.grid_shp.loc[i]["geometry"])
             distance = getDistance(inter_grid, center)
             divisor += guss(threshold, distance)*inter_pop
         if divisor == 0:
             rj = 0
         else:
-            rj = area_grid.grid_shp.loc[i]["area"]/divisor
+            rj = _area_grid.grid_shp.loc[i]["area"]/divisor
             # print(rj)
-        area_grid.grid_shp.loc[i, "Rj"] = rj
+        _area_grid.grid_shp.loc[i, "Rj"] = rj
 
     # step2 people to green
-    for i, inter in close_selecter(pop_grid.grid_shp, area_grid.grid_shp):
+    for i, inter in close_selector(_pop_grid.grid_shp, _area_grid.grid_shp):
         ai = 0
         for inter_grid, inter_rj in zip(inter["geometry"], inter["Rj"]):
             if inter_rj == 0:
                 continue
-            center = getCenter(pop_grid.grid_shp.loc[i]["geometry"])
+            center = getCenter(_pop_grid.grid_shp.loc[i]["geometry"])
             distance = getDistance(inter_grid, center)
             ai += guss(threshold, distance)*inter_rj
-        pop_grid.grid_shp.loc[i, "Ai"] = ai
+        _pop_grid.grid_shp.loc[i, "Ai"] = ai
 
-    return Grid(pop_grid.grid_shp)
+    return Grid(_pop_grid.grid_shp)
 
 
 def normalize(data_line):

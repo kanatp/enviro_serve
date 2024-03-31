@@ -483,7 +483,7 @@ class Error(Exception):
 
 if __name__ == "__main__":
     # extract_by_value("Raster/using/2000t.tif", "test.tif", 41, 42, 43, 44, 45, 46)
-    g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
+    g = make_grid("ShapeFile/T.shp", 500, "Raster_out/grid.shp")
     zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
     area_grid = zonal_er.count_by_grid("area")
     pop_raster_preprocess("Raster/a2000/hdr.adf", "Raster_out/pop.tif")
@@ -492,6 +492,6 @@ if __name__ == "__main__":
     pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
     pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
     guss_cal = Guss(pop_grid, area_grid, 2500)
-    test = guss_cal.guss_reach(10)
+    test = guss_cal.guss_reach(15)
     demand(test, "Ai", "pop", "test")
     # print(test)

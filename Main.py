@@ -2,7 +2,7 @@ import math
 import geopandas as gpd
 import pandas as pd
 import shapely
-import threading
+import multiprocessing
 from osgeo import gdal
 import numpy as np
 import matplotlib.pyplot as plt
@@ -135,90 +135,6 @@ def make_grid(loc_in, step, loc_out=None):
     if loc_out:
         grid.to_file(loc_out)
     return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
-
-
-# need a threads optimize
-def guss_reach(threshold, _pop_grid, _area_grid):
-    """
-    :param threshold: the threshold of guss search
-    :param _pop_grid: grid of popularity
-    :param _area_grid: grid of area of research region
-    :return: a dic that contain a guss search value of specific gird in pop_grid
-    warning : the input grid should be in the same crs
-    """
-    if _pop_grid.grid_shp.crs != _area_grid.grid_shp.crs:
-        raise Error("crs doesn't match")
-    try:
-        _pop_grid.grid_shp["pop"]
-    except KeyError:
-        raise Error("don't have a pop column, rename or add it to the pop grid")
-    try:
-        _area_grid.grid_shp["area"]
-    except KeyError:
-        raise Error("don't have a area column, rename or add it to the area grid")
-    available = threading.active_count()
-    print(available)
-
-    def getCenter(shp):
-        p_x, p_y = shp.exterior.coords.xy
-        return (p_x[1] + p_x[0])/2.0, (p_y[1] + p_y[2])/2.0
-
-    def guss(_threshold, dist):
-        if dist > _threshold:
-            return 0
-        q1 = math.exp(-(1 / 2.0) * (dist / _threshold) * (dist / _threshold))
-        q2 = math.exp(-(1 / 2.0))
-        return (q1 - q2) / (1 - q2)
-
-    def close_selector(first, second):
-        for _i in range(0, (first.shape[0])):
-            grid = first.loc[_i]
-            __center = getCenter(grid["geometry"])
-            center_point = shapely.Point(__center)
-            buffer = center_point.buffer(threshold)
-            _inter = second.intersects(buffer)
-            _inter = second[_inter]
-            yield _i, _inter
-
-    def getDistance(inter_grids, _center):
-        x_dis = getCenter(inter_grids)[0] - _center[0]
-        y_dis = getCenter(inter_grids)[1] - _center[1]
-        return math.sqrt(x_dis * x_dis + y_dis * y_dis)
-
-    # crs = pop_grid.grid_shp.crs
-    # area_grid.grid_shp
-    # pop_grid.grid_shp
-    _area_grid.grid_shp.loc[0, "Rj"], _pop_grid.grid_shp.loc[0, "Ai"] = 0, 0
-
-    # step 1, green to people
-    for i, inter in close_selector(_area_grid.grid_shp, _pop_grid.grid_shp):
-        # print(i, inter)
-        divisor = 0
-        for inter_grid, inter_pop in zip(inter["geometry"], inter["pop"]):
-            if inter_pop == 0:
-                continue
-            center = getCenter(_area_grid.grid_shp.loc[i]["geometry"])
-            distance = getDistance(inter_grid, center)
-            divisor += guss(threshold, distance)*inter_pop
-        if divisor == 0:
-            rj = 0
-        else:
-            rj = _area_grid.grid_shp.loc[i]["area"]/divisor
-            # print(rj)
-        _area_grid.grid_shp.loc[i, "Rj"] = rj
-
-    # step2 people to green
-    for i, inter in close_selector(_pop_grid.grid_shp, _area_grid.grid_shp):
-        ai = 0
-        for inter_grid, inter_rj in zip(inter["geometry"], inter["Rj"]):
-            if inter_rj == 0:
-                continue
-            center = getCenter(_pop_grid.grid_shp.loc[i]["geometry"])
-            distance = getDistance(inter_grid, center)
-            ai += guss(threshold, distance)*inter_rj
-        _pop_grid.grid_shp.loc[i, "Ai"] = ai
-
-    return Grid(_pop_grid.grid_shp)
 
 
 def normalize(data_line):
@@ -444,20 +360,138 @@ class Zonal:
         return Grid(self.shp)
 
 
+class Guss:
+    def __init__(self, popgrid, areagrid, threshold):
+        self._pop = popgrid.grid_shp
+        self._area = areagrid.grid_shp
+        self.result = None
+        self._threshold = threshold
+
+    def getCenter(self, shp):
+        p_x, p_y = shp.exterior.coords.xy
+        return (p_x[1] + p_x[0]) / 2.0, (p_y[1] + p_y[2]) / 2.0
+
+    def guss(self, dist):
+        if dist > self._threshold:
+            return 0
+        q1 = math.exp(-(1 / 2.0) * (dist / self._threshold) * (dist / self._threshold))
+        q2 = math.exp(-(1 / 2.0))
+        return (q1 - q2) / (1 - q2)
+
+    def close_selector(self, first, second, start, end):
+        for _i in range(start, end):
+            grid = first.loc[_i]
+            __center = self.getCenter(grid["geometry"])
+            center_point = shapely.Point(__center)
+            buffer = center_point.buffer(self._threshold)
+            _inter = second.intersects(buffer)
+            _inter = second[_inter]
+            # print(_i, _inter)
+            yield _i, _inter
+
+    def getDistance(self, inter_grids, _center):
+        x_dis = self.getCenter(inter_grids)[0] - _center[0]
+        y_dis = self.getCenter(inter_grids)[1] - _center[1]
+        return math.sqrt(x_dis * x_dis + y_dis * y_dis)
+
+    def run_step1(self, st, en, arr1):
+        # step 1, green to people
+        for i, inter in self.close_selector(self._area, self._pop, st, en):
+            # print(i, inter)
+            divisor = 0
+            for inter_grid, inter_pop in zip(inter["geometry"], inter["pop"]):
+                if inter_pop == 0:
+                    continue
+                center = self.getCenter(self._area.loc[i]["geometry"])
+                distance = self.getDistance(inter_grid, center)
+                divisor += self.guss(distance) * inter_pop
+            if divisor == 0:
+                rj = 0
+            else:
+                rj = self._area.loc[i]["area"] / divisor
+                # print(rj)
+            arr1[i] = rj
+            # _area_grid.grid_shp.loc[i, "Rj"] = rj
+
+    def run_step2(self, st, en, arr2):
+        # step2 people to green
+        for i, inter in self.close_selector(self._pop, self._area, st, en):
+            ai = 0
+            for inter_grid, inter_rj in zip(inter["geometry"], inter["Rj"]):
+                if inter_rj == 0:
+                    continue
+                center = self.getCenter(self._pop.loc[i]["geometry"])
+                distance = self.getDistance(inter_grid, center)
+                ai += self.guss(distance) * inter_rj
+            # _pop_grid.grid_shp.loc[i, "Ai"] = ai
+            arr2[i] = ai
+
+    def guss_reach(self, threads):
+        if self._pop.crs != self._area.crs:
+            raise Error("crs doesn't match")
+        try:
+            self._pop["pop"]
+        except KeyError:
+            raise Error("don't have a pop column, rename or add it to the pop grid")
+        try:
+            self._area["area"]
+        except KeyError:
+            raise Error("don't have a area column, rename or add it to the area grid")
+
+        # self._area.loc[0, "Rj"], self._pop.loc[0, "Ai"] = 0, 0
+        rja = multiprocessing.Array('f', size_or_initializer=self._pop.shape[0])
+        aia = multiprocessing.Array('f', size_or_initializer=self._pop.shape[0])
+        # print(start, step)
+        # print(aia, rja)
+        start, step = 0, int(self._pop.shape[0] / threads)
+        for thread_id in range(threads):
+            if thread_id != threads - 1:
+                new_thread = multiprocessing.Process(target=self.run_step1, name=f"{thread_id}",
+                                                     args=(start, start + step, rja))
+            else:
+                new_thread = multiprocessing.Process(target=self.run_step1, name=f"{thread_id}",
+                                                     args=(start, self._pop.shape[0], rja))
+            new_thread.start()
+            new_thread.join()
+            start += step
+
+        self._area.loc[:, "Rj"] = [a for a in rja]
+        self.result = self._area.copy()
+        self.result.loc[:, "pop"] = self._pop["pop"]
+
+        start, step = 0, int(self._pop.shape[0] / threads)
+        for thread_id in range(threads):
+            if thread_id != threads - 1:
+                new_thread = multiprocessing.Process(target=self.run_step2, name=f"{thread_id}",
+                                                     args=(start, start + step, aia))
+            else:
+                new_thread = multiprocessing.Process(target=self.run_step2, name=f"{thread_id}",
+                                                     args=(start, self._pop.shape[0], aia))
+            new_thread.start()
+            new_thread.join()
+            start += step
+
+        self.result.loc[:, "Ai"] = [a for a in aia]
+
+        return Grid(self.result)
+
+
 class Error(Exception):
     def __init__(self, message):
         self.info = message
 
 
-# extract_by_value("Raster/using/2000t.tif", "test.tif", 41, 42, 43, 44, 45, 46)
-g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
-zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
-area_grid = zonal_er.count_by_grid("area")
-pop_raster_preprocess("Raster/a2000/hdr.adf", "Raster_out/pop.tif")
-zonal_er = Zonal("Raster_out/pop.tif", "Raster_out/grid.shp")
-pop_grid = zonal_er.count_by_grid("sum")
-pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
-pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
-test = guss_reach(5000, pop_grid, area_grid)
-demand(test, "Ai", "pop", "test")
-# print(test)
+if __name__ == "__main__":
+    # extract_by_value("Raster/using/2000t.tif", "test.tif", 41, 42, 43, 44, 45, 46)
+    g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
+    zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
+    area_grid = zonal_er.count_by_grid("area")
+    pop_raster_preprocess("Raster/a2000/hdr.adf", "Raster_out/pop.tif")
+    zonal_er = Zonal("Raster_out/pop.tif", "Raster_out/grid.shp")
+    pop_grid = zonal_er.count_by_grid("sum")
+    pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
+    pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
+    guss_cal = Guss(pop_grid, area_grid, 2500)
+    test = guss_cal.guss_reach(10)
+    demand(test, "Ai", "pop", "test")
+    # print(test)

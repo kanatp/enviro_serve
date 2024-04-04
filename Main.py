@@ -10,189 +10,6 @@ from shapely import geometry
 import pickle
 
 
-def raster_maker(out_loc, x, y, typ, tran, proj, new_data, background_value=-1):
-    driver = gdal.GetDriverByName("GTiff")
-
-    dts = driver.Create(
-        out_loc,
-        xsize=x,
-        ysize=y,
-        bands=1,
-        eType=typ,
-    )
-    dts.SetGeoTransform(tran)
-    dts.SetProjection(proj)
-    dts.GetRasterBand(1).WriteArray(new_data)
-    dts.GetRasterBand(1).SetNoDataValue(background_value)
-
-
-def extract_by_value(file, save, *value):
-    """
-
-    :param file: input image file
-    :param save: output image file
-    :param value: the value to be extracted, it's type can be num or string
-        Can receive a mix of this two type of value
-        ## a legal string input for value can be ">80", "<=86.5" etc. ##
-        ## but the string input should be no more than a couple of ">" and "<" ##
-    :return: None
-    """
-
-    def get_conditions(inp, condition):
-        """
-
-        :param inp: a number or something else
-        :param condition: a condition in form of ">n" etc.
-        :return: True or False
-        """
-        if condition[0] == ">" and condition[1] != "=":
-            return inp > float(condition[1:])
-        elif condition[0] == "<" and condition[1] != "=":
-            return inp < float(condition[1:])
-        elif condition[0] == ">" and condition[1] == "=":
-            return inp >= float(condition[2:])
-        elif condition[0] == "<" and condition[1] == "=":
-            return inp <= float(condition[2:])
-
-    in_r = gdal.Open(file)
-    x, y = (in_r.RasterXSize, in_r.RasterYSize)
-    proj = in_r.GetProjection()
-    tran = in_r.GetGeoTransform()
-    typ = in_r.GetRasterBand(1).DataType
-    or_data = in_r.GetRasterBand(1).ReadAsArray()
-
-    new_data = or_data.copy()
-    num_con = []
-    str_con = []
-    for con in value:
-        if type(con) == str:
-            str_con.append(con)
-        else:
-            num_con.append(con)
-
-    for i in range(y):
-        for j in range(x):
-            flag2 = flag1 = None
-            if len(num_con) != 0:
-                flag1 = new_data[i, j] in num_con
-            if len(str_con) != 0:
-                flag2 = get_conditions(new_data[i, j], str_con[0])
-                for con in str_con[1:]:
-                    flag2 = (flag2 and get_conditions(new_data[i, j], con))
-            if not (flag1 or flag2):
-                new_data[i, j] = 0
-
-    raster_maker(save, x, y, typ, tran, proj, new_data, 0)
-
-
-def make_grid(loc_in, step, loc_out=None):
-    # 统一坐标系
-    crs_file = open("crs.txt", "rb")
-    crs = pickle.load(crs_file)
-    crs_file.close()
-    shp = gpd.read_file(loc_in).to_crs(crs)
-    # 确定范围
-    bounds = shp.bounds
-    bounds_min = bounds.min()
-    bounds_max = bounds.max()
-    min_x = float(bounds_min.minx)
-    max_x = float(bounds_max.maxx)
-    min_y = float(bounds_min.miny)
-    max_y = float(bounds_max.maxy)
-
-    x, y = (min_x, max_y)
-
-    # 生成网格
-    # 点顺序固定 左上-右上-右下-左下
-    step = step
-    geom_array = []
-    while y >= min_y:
-        while x <= max_x:
-            geom = geometry.Polygon([(x, y), (x+step, y), (x+step, y-step), (x, y-step), (x, y)])
-            geom_array.append(geom)
-            x += step
-        x = min_x
-        y -= step
-
-    # 显示
-    grid = gpd.GeoDataFrame(geometry=geom_array, crs=crs)
-    # the intersection of grid that intersect with the geometry
-    """
-    here was a part to be optimize
-    """
-    ind = grid.intersects(shp.geometry[0]).values
-    for bound_shp in shp.geometry[1:]:
-        ind = np.vstack([ind, grid.intersects(bound_shp).values])
-
-    ind = ind.any(0)
-    # 裁剪网格
-    grid = grid.loc[ind]
-    grid = grid.reset_index().drop("index", 1)
-    # fig, ax = plt.subplots(1, 2)
-    # ax[0] = shp.plot(ax=ax[0])
-    # ax[1] = grid.plot(ax=ax[1])
-    # plt.show()
-    if loc_out:
-        grid.to_file(loc_out)
-    return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
-
-
-def normalize(data_line):
-    _max = data_line.max()
-    _min = data_line.min()
-    # print(_max, _min)
-    return (data_line - _min) / (_max-_min)
-
-
-def demand(grid, ai_column_name, pop_column_name, out_loc):
-    shp = grid.grid_shp
-    for i in range(shp.shape[0]):
-        try:
-            ai = shp[ai_column_name][i]
-            pop = shp[pop_column_name][i]
-        except KeyError:
-            raise Error("column name of Ai or pop can't be found")
-        if pop == 0:
-            ro = -1
-        else:
-            ro = ai/pop
-        shp.loc[i, "RO"] = ro
-    # data normalize
-    shp.loc[shp["RO"] == -1, 'RO'] = shp["RO"].max()
-    shp.loc[:, "RO"] = normalize(shp["RO"])
-    grid.to_shapefile(out_loc)
-
-
-def supply(grid, building_column_name, green_column_name, out_loc):
-    shp = grid.grid_shp
-    for i in range(shp.shape[0]):
-        building_area = shp[i][building_column_name]
-        green_area = shp[i][green_column_name]
-        if building_area == 0:
-            rp = -1
-        else:
-            rp = green_area/building_area
-        shp.loc[i, "RP"] = rp
-
-    grid.to_shapefile(out_loc)
-
-
-def pop_raster_preprocess(pop_ras, out_loc):
-    _pop_ras = gdal.Open(pop_ras)
-    x, y = (_pop_ras.RasterXSize, _pop_ras.RasterYSize)
-    typ = _pop_ras.GetRasterBand(1).DataType
-    proj = _pop_ras.GetProjection()
-    tran = _pop_ras.GetGeoTransform()
-
-    new_data = _pop_ras.GetRasterBand(1).ReadAsArray().copy()
-    for i in range(y):
-        for j in range(x):
-            if new_data[i, j] <= 0:
-                new_data[i, j] = 0
-
-    raster_maker(out_loc, x, y, typ, tran, proj, new_data, 0)
-
-
 class Grid:
 
     """
@@ -481,9 +298,202 @@ class Error(Exception):
         self.info = message
 
 
+def raster_maker(out_loc, x, y, typ, tran, proj, new_data, background_value=-1):
+    driver = gdal.GetDriverByName("GTiff")
+
+    dts = driver.Create(
+        out_loc,
+        xsize=x,
+        ysize=y,
+        bands=1,
+        eType=typ,
+    )
+    dts.SetGeoTransform(tran)
+    dts.SetProjection(proj)
+    dts.GetRasterBand(1).WriteArray(new_data)
+    dts.GetRasterBand(1).SetNoDataValue(background_value)
+
+
+def extract_by_value(file, save, *value):
+    """
+
+    :param file: input image file
+    :param save: output image file
+    :param value: the value to be extracted, it's type can be num or string
+        Can receive a mix of this two type of value
+        ## a legal string input for value can be ">80", "<=86.5" etc. ##
+        ## but the string input should be no more than a couple of ">" and "<" ##
+    :return: None
+    """
+
+    def get_conditions(inp, condition):
+        """
+
+        :param inp: a number or something else
+        :param condition: a condition in form of ">n" etc.
+        :return: True or False
+        """
+        if condition[0] == ">" and condition[1] != "=":
+            return inp > float(condition[1:])
+        elif condition[0] == "<" and condition[1] != "=":
+            return inp < float(condition[1:])
+        elif condition[0] == ">" and condition[1] == "=":
+            return inp >= float(condition[2:])
+        elif condition[0] == "<" and condition[1] == "=":
+            return inp <= float(condition[2:])
+
+    in_r = gdal.Open(file)
+    x, y = (in_r.RasterXSize, in_r.RasterYSize)
+    proj = in_r.GetProjection()
+    tran = in_r.GetGeoTransform()
+    typ = in_r.GetRasterBand(1).DataType
+    or_data = in_r.GetRasterBand(1).ReadAsArray()
+
+    new_data = or_data.copy()
+    num_con = []
+    str_con = []
+    for con in value:
+        if type(con) == str:
+            str_con.append(con)
+        else:
+            num_con.append(con)
+
+    for i in range(y):
+        for j in range(x):
+            flag2 = flag1 = None
+            if len(num_con) != 0:
+                flag1 = new_data[i, j] in num_con
+            if len(str_con) != 0:
+                flag2 = get_conditions(new_data[i, j], str_con[0])
+                for con in str_con[1:]:
+                    flag2 = (flag2 and get_conditions(new_data[i, j], con))
+            if not (flag1 or flag2):
+                new_data[i, j] = 0
+
+    raster_maker(save, x, y, typ, tran, proj, new_data, 0)
+
+
+def make_grid(loc_in, step, loc_out=None):
+    # ones the crs
+    crs_file = open("crs.txt", "rb")
+    crs = pickle.load(crs_file)
+    crs_file.close()
+    shp = gpd.read_file(loc_in).to_crs(crs)
+    # make out the bound
+    bounds = shp.bounds
+    bounds_min = bounds.min()
+    bounds_max = bounds.max()
+    min_x = float(bounds_min.minx)
+    max_x = float(bounds_max.maxx)
+    min_y = float(bounds_min.miny)
+    max_y = float(bounds_max.maxy)
+
+    x, y = (min_x, max_y)
+
+    # general
+    # fixed point order left-up->right-up->right-down->left-down
+    step = step
+    geom_array = []
+    while y >= min_y:
+        while x <= max_x:
+            geom = geometry.Polygon([(x, y), (x+step, y), (x+step, y-step), (x, y-step), (x, y)])
+            geom_array.append(geom)
+            x += step
+        x = min_x
+        y -= step
+
+    # show
+    grid = gpd.GeoDataFrame(geometry=geom_array, crs=crs)
+    # the intersection of grid that intersect with the geometry
+    """
+    here was a part to be optimize
+    """
+    ind = grid.intersects(shp.geometry[0]).values
+    for bound_shp in shp.geometry[1:]:
+        ind = np.vstack([ind, grid.intersects(bound_shp).values])
+
+    ind = ind.any(0)
+    # cut
+    grid = grid.loc[ind]
+    grid = grid.reset_index().drop("index", 1)
+    # fig, ax = plt.subplots(1, 2)
+    # ax[0] = shp.plot(ax=ax[0])
+    # ax[1] = grid.plot(ax=ax[1])
+    # plt.show()
+    if loc_out:
+        grid.to_file(loc_out)
+    return Grid(grid, size=(step, -step), bound=[min_x, min_y, max_x, max_y])
+
+
+def normalize(data_line):
+    _max = data_line.max()
+    _min = data_line.min()
+    # print(_max, _min)
+    return (data_line - _min) / (_max-_min)
+
+
+def demand(grid: Grid, ai_column_name, pop_column_name, out_loc):
+    shp = grid.grid_shp
+    for i in range(shp.shape[0]):
+        try:
+            ai = shp[ai_column_name][i]
+            pop = shp[pop_column_name][i]
+        except KeyError:
+            raise Error("column name of Ai or pop can't be found")
+        if pop == 0:
+            ro = -1
+        else:
+            ro = ai/pop
+        shp.loc[i, "RO"] = ro
+    # data normalize
+    shp.loc[shp["RO"] == -1, 'RO'] = shp["RO"].max()
+    shp.loc[:, "RO"] = normalize(shp["RO"])
+    grid.to_shapefile(out_loc)
+
+
+def supply(grid: Grid, building_column_name, green_column_name, out_loc):
+    shp = grid.grid_shp
+    for i in range(shp.shape[0]):
+        building_area = shp[i][building_column_name]
+        green_area = shp[i][green_column_name]
+        if building_area == 0:
+            rp = -1
+        else:
+            rp = green_area/building_area
+        shp.loc[i, "RP"] = rp
+
+    grid.to_shapefile(out_loc)
+
+
+def pop_raster_preprocess(pop_ras, out_loc):
+    _pop_ras = gdal.Open(pop_ras)
+    x, y = (_pop_ras.RasterXSize, _pop_ras.RasterYSize)
+    typ = _pop_ras.GetRasterBand(1).DataType
+    proj = _pop_ras.GetProjection()
+    tran = _pop_ras.GetGeoTransform()
+
+    new_data = _pop_ras.GetRasterBand(1).ReadAsArray().copy()
+    for i in range(y):
+        for j in range(x):
+            if new_data[i, j] <= 0:
+                new_data[i, j] = 0
+
+    raster_maker(out_loc, x, y, typ, tran, proj, new_data, 0)
+
+
+def raster_cutter(raster_in, mask: Grid):
+    file = gdal.Open(raster_in)
+    x, y = (file.RasterXSize, file.RasterYSize)
+    proj = file.GetProjection()
+    tran = file.GetGeoTransform()
+    typ = file.GetRasterBand(1).DataType
+    ...
+
+
 if __name__ == "__main__":
+    '''
     # extract_by_value("Raster/using/2000t.tif", "test.tif", 41, 42, 43, 44, 45, 46)
-    g = make_grid("ShapeFile/T.shp", 500, "Raster_out/grid.shp")
+    g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
     zonal_er = Zonal("test.tif", "Raster_out/grid.shp")
     area_grid = zonal_er.count_by_grid("area")
     pop_raster_preprocess("Raster/a2000/hdr.adf", "Raster_out/pop.tif")
@@ -491,7 +501,9 @@ if __name__ == "__main__":
     pop_grid = zonal_er.count_by_grid("sum")
     pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
     pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
+    print(pop_grid.bound, pop_grid.size)
     guss_cal = Guss(pop_grid, area_grid, 2500)
     test = guss_cal.guss_reach(15)
     demand(test, "Ai", "pop", "test")
     # print(test)
+    '''

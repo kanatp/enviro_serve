@@ -1,4 +1,12 @@
+"""
+@Time: 2024/4/4
+@author:  Yubing
+@purpose: base function to deal with raster/shapefile
+
+"""
 import math
+import os.path
+
 import geopandas as gpd
 import pandas as pd
 import shapely
@@ -415,7 +423,7 @@ def make_grid(loc_in, step, loc_out=None):
     ind = ind.any(0)
     # cut
     grid = grid.loc[ind]
-    grid = grid.reset_index().drop("index", 1)
+    grid = grid.reset_index().drop(columns="index")
     # fig, ax = plt.subplots(1, 2)
     # ax[0] = shp.plot(ax=ax[0])
     # ax[1] = grid.plot(ax=ax[1])
@@ -481,13 +489,33 @@ def pop_raster_preprocess(pop_ras, out_loc):
     raster_maker(out_loc, x, y, typ, tran, proj, new_data, 0)
 
 
-def raster_cutter(raster_in, mask: Grid):
+def raster_cutter(raster_in, mask: Grid, out_loc):
     file = gdal.Open(raster_in)
-    x, y = (file.RasterXSize, file.RasterYSize)
     proj = file.GetProjection()
+    crs = mask.grid_shp.crs
+    if crs != proj:
+        option = gdal.WarpOptions(
+            srcSRS=proj, dstSRS=crs,
+            resampleAlg=gdal.GRA_Cubic, format="GTiff"
+        )
+        gdal.Warp('temp.tif', file, options=option)
+        file = gdal.Open("temp.tif")
     tran = file.GetGeoTransform()
     typ = file.GetRasterBand(1).DataType
-    ...
+    # print(tran, "\n", mask.bound)
+    _X_start, _Y_start = (math.floor((mask.bound[0] - tran[0])/tran[1]),
+                          math.floor((mask.bound[3] - tran[3])/tran[5]))
+    _X_end, _Y_end = (math.ceil((mask.bound[2] - tran[0])/tran[1]),
+                      math.ceil((mask.bound[1] - tran[3])/tran[5]))
+    new_data = file.GetRasterBand(1).ReadAsArray()[_Y_start:_Y_end, _X_start:_X_end]
+    # print(new_data)
+    x, y = (_X_end - _X_start, _Y_end - _Y_start)
+    new_tran = (mask.bound[0], tran[1], tran[2], mask.bound[3], tran[4], tran[5])
+    raster_maker(out_loc, x, y, typ, new_tran, proj, new_data)
+    # close the file
+    file = None
+    if os.path.exists("temp.tif"):
+        os.remove("temp.tif")
 
 
 if __name__ == "__main__":
@@ -500,10 +528,12 @@ if __name__ == "__main__":
     zonal_er = Zonal("Raster_out/pop.tif", "Raster_out/grid.shp")
     pop_grid = zonal_er.count_by_grid("sum")
     pop_grid.grid_shp["pop"] = pop_grid.grid_shp["sum"]
-    pop_grid.grid_shp = pop_grid.grid_shp.drop("sum", 1)
+    pop_grid.grid_shp = pop_grid.grid_shp.drop(columns="sum")
     print(pop_grid.bound, pop_grid.size)
     guss_cal = Guss(pop_grid, area_grid, 2500)
     test = guss_cal.guss_reach(15)
     demand(test, "Ai", "pop", "test")
     # print(test)
     '''
+    g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
+    raster_cutter("dataverse_files/DMSP1992.tif", g, "new.tif")

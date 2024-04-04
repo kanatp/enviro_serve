@@ -536,4 +536,4 @@ if __name__ == "__main__":
     # print(test)
     '''
     g = make_grid("ShapeFile/T.shp", 1000, "Raster_out/grid.shp")
-    raster_cutter("dataverse_files/DMSP1992.tif", g, "new.tif")
+    raster_cutter("dataverse_files/DMSP-like2020.tif", g, "new.tif")
